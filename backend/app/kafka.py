@@ -1,8 +1,8 @@
 from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
-import asyncio
 import os
 
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
+KAFKA_BROKER = os.getenv('KAFKA_BROKER', default="kafka:9092")
+
 
 async def produce_message(topic, message):
     producer = AIOKafkaProducer(bootstrap_servers=KAFKA_BROKER)
@@ -11,6 +11,7 @@ async def produce_message(topic, message):
         await producer.send_and_wait(topic, message.encode("utf-8"))
     finally:
         await producer.stop()
+
 
 async def consume_messages(topic):
     consumer = AIOKafkaConsumer(topic, bootstrap_servers=KAFKA_BROKER, group_id="sync_group")

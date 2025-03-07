@@ -120,3 +120,4 @@ logs/
 *.swp
 *.swo
 Thumbs.db
+/worker/app/
