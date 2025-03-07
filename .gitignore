@@ -1,0 +1,122 @@
+# ================================
+# General Ignore Rules
+# ================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.env/
+.venv/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Testing
+.coverage
+.tox/
+.nox/
+
+# MyPy
+.mypy_cache/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+.DS_Store
+
+# Local database files
+*.sqlite3
+*.db
+
+
+# ================================
+# PyCharm (JetBrains) Ignore Rules
+# ================================
+
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# ================================
+# VS Code Ignore Rules
+# ================================
+
+.vscode/
+
+# ================================
+# React (Frontend) Ignore Rules
+# ================================
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# dependencies
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# production
+/build
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts
+.cache/
+.next/
+.eslintcache
+.stylelintcache
+*.gz
+
+# Testing & Coverage
+coverage/
+*.snap
+
+# Linting
+eslint-report.json
+.stylelintcache
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs/
+*.log
+
+# Miscellaneous
+*.swp
+*.swo
+Thumbs.db

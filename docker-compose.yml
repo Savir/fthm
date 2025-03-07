@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+      - kafka
+    environment:
+      - DATABASE_URL=mysql+pymysql://user:password@db:3306/sync_db
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=mysecretkey
+      - KAFKA_BROKER=kafka:9092
+    command: >
+      sh -c "watchmedo auto-restart --directory=/backend/ --patterns='*.py' --recursive -- uvicorn --app-dir /backend/ app.main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      - ./backend:/backend
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/frontend
+    command: >
+      sh -c "cd /frontend/ && npm start"
+
+  db:
+    image: mysql:8.4
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: sync_db
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      - fthm_mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:7
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - fthm_redis_data:/data
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.9.0
+    restart: always
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.9.0
+    restart: always
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    volumes:
+      - fthm_kafka_data:/var/lib/kafka
+
+volumes:
+  fthm_mysql_data:
+  fthm_redis_data:
+  fthm_kafka_data:
