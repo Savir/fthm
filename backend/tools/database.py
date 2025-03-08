@@ -14,6 +14,7 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+
 @contextmanager
 def ctx_db() -> "Session":
     """Context manager for database session."""
@@ -22,6 +23,7 @@ def ctx_db() -> "Session":
         yield db
     finally:
         db.close()
+
 
 def get_db() -> "Session":
     """Generator for FastAPI dependency, reusing ctx_db()."""

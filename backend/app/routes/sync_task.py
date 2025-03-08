@@ -1,5 +1,6 @@
+import asyncio
 import json
-from typing import List, Type
+from typing import Type, Iterable
 
 import redis
 import structlog
@@ -7,15 +8,16 @@ from fastapi import APIRouter
 from fastapi import Depends, HTTPException
 from fastapi import WebSocket
 from sqlalchemy.orm import Session
+from starlette.websockets import WebSocketDisconnect
 
 from app.auth import get_current_user
-from app.database import SessionLocal, get_db
-from app.kafka import produce_message
 from app.models import SyncTask
 from tools import constants
+from tools.database import get_db
+from tools.kafka import produce_message
 from tools.sync_task_listener import active_websockets
 
-router = APIRouter()  # No prefix. Better be inplicit.
+router = APIRouter()  # No prefix. Better be implicit.
 redis_client = redis.StrictRedis.from_url(constants.redis_url, decode_responses=True)
 
 log = structlog.get_logger()
@@ -24,8 +26,8 @@ log = structlog.get_logger()
 @router.get("/sync")
 def get_user_syncs(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     """Return all meetings and their sync status for the logged-in user."""
-    sync_tasks: List[Type[SyncTask]]
-    sync_tasks = db.query(SyncTask).filter(SyncTask.user_id == user["username"]).all()
+    sync_tasks: Iterable[Type[SyncTask]]
+    sync_tasks = db.query(SyncTask).filter(SyncTask.user_id == user["username"])
     return [{"id": st.id, "meeting_id": st.meeting_id, "status": st.status} for st in sync_tasks]
 
 
@@ -33,21 +35,29 @@ def get_user_syncs(user: dict = Depends(get_current_user), db: Session = Depends
 async def start_sync_task(
     meeting_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    """Start a new sync task and enqueue JobA."""
-    existing_task = (
-        db.query(SyncTask)
+    """Start a new sync task for the meeting with ID 'meeting_id'"""
+    if not user["permissions"]["can_manually_sync"]:
+        # 403: I know who you are, but you just can't do this... Dave https://youtu.be/5lsExRvJTAI
+        raise HTTPException(status_code=403, detail=f"User {user['username']} can't manually sync")
+
+    # If we already have a synchronization task for that meeting that is not "finished",
+    # then throw an error.
+    existing_task = db.query(
+        db.query(SyncTask.id)
         .filter(
             SyncTask.meeting_id == meeting_id,
             SyncTask.user_id == user["username"],
-            SyncTask.status.notin_(constants.completed_statuses),
+            SyncTask.status.notin_(constants.finished_statuses),
         )
-        .first()
-    )
+        .exists()
+    ).scalar()
 
     if existing_task:
         raise HTTPException(status_code=400, detail="Sync already in progress")
 
-    sync_task = SyncTask(meeting_id=meeting_id, user_id=user["username"], status="in_progress")
+    # Ok: If we're here, we can create a new synchronization task and send it to the worker
+    #     for processing.
+    sync_task = SyncTask(meeting_id=meeting_id, user_id=user["username"])
     db.add(sync_task)
     db.commit()
 
@@ -57,6 +67,7 @@ async def start_sync_task(
         "status": sync_task.status,
         "user_id": user["username"],
     }
+    log.info("Meeting synchronization task started", **task_data)
     await produce_message(constants.start_topic, json.dumps(task_data))
     return task_data
 
@@ -93,3 +104,8 @@ async def sync_status_ws(websocket: WebSocket, sync_task_id: int):
     """WebSocket route to send live sync status updates from Redis Pub/Sub."""
     await websocket.accept()
     active_websockets[sync_task_id] = websocket
+    try:
+        while True:
+            await asyncio.sleep(10)  # Keep connection alive
+    except WebSocketDisconnect:
+        del active_websockets[sync_task_id]

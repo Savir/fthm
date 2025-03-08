@@ -5,15 +5,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import router as auth_routes
-from app.database import engine, Base
-from app.routes import router as api_router
-from tools.sync_task_listener import handle_notification
+from tools.database import engine, Base
+from app.routes import sync_task_router
+from tools.sync_task_listener import listen_for_changes
 
 log = structlog.get_logger()
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI()
-app.include_router(api_router)
+app.include_router(sync_task_router)
 app.include_router(auth_routes)
 app.add_middleware(
     CORSMiddleware,
@@ -33,4 +33,4 @@ def read_root():
 async def startup_event():
     """Runs when the FastAPI server starts."""
     log.info("Starting the FastAPI server")
-    asyncio.create_task(handle_notification())
+    asyncio.create_task(listen_for_changes())
