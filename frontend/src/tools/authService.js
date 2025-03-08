@@ -1,8 +1,32 @@
 import axios from "axios";
+import {jwtDecode} from "jwt-decode";
 
-const API_URL = "http://backend:8000";
+const API_URL = "http://localhost:8000";
 const accessTokenKey = "accessToken";
 const refreshTokenKey = "refreshToken";
+
+export const login = async (username, password) => {
+  try {
+    const response = await axios.post(
+      `${API_URL}/token`,
+      new URLSearchParams({ username, password }), // ✅ Correct form data format
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    );
+
+    storeTokens(response.data.access_token, response.data?.refresh_token || null);
+    window.dispatchEvent(new Event("authChange")); // ✅ Notify App.js that authentication changed
+    return true;
+  } catch (error) {
+    console.error("Login failed:", error);
+    return false;
+  }
+};
+
+// Function to store new tokens
+const storeTokens = (access, refresh) => {
+  localStorage.setItem(accessTokenKey, access);
+  localStorage.setItem(refreshTokenKey, refresh);
+};
 
 // Function to get stored tokens
 const getTokens = () => ({
@@ -10,10 +34,28 @@ const getTokens = () => ({
   refresh: localStorage.getItem(refreshTokenKey),
 });
 
-// Function to store new tokens
-const storeTokens = (access, refresh) => {
-  localStorage.setItem(accessTokenKey, access);
-  localStorage.setItem(refreshTokenKey, refresh);
+export const getLoggedUser = () => {
+  const tokens = getTokens();
+  if (!tokens.access) {
+    return null;
+  }
+
+  const access = jwtDecode(tokens.access);
+  if (access.exp * 1000 < Date.now()) {
+    console.warn("Token expired. Logging out.");
+    logout();
+    return null;
+  }
+  // Else... we are logged in properly
+  console.log("Checkpoint tokens", access, tokens.refresh);
+  return access;
+};
+
+export const logout = () => {
+  console.log("Logging out...");
+  localStorage.removeItem(accessTokenKey);
+  localStorage.removeItem(refreshTokenKey);
+  window.dispatchEvent(new Event("authChange"));
 };
 
 // Create Axios instance
@@ -43,6 +85,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       const { refresh } = getTokens();
       if (!refresh) {
+        logout();
         return Promise.reject(error);
       }
       try {
@@ -55,8 +98,7 @@ api.interceptors.response.use(
         error.config.headers.Authorization = `Bearer ${newAccessToken}`;
         return api.request(error.config);
       } catch (refreshError) {
-        localStorage.removeItem(accessTokenKey);
-        localStorage.removeItem(refreshTokenKey);
+        logout();
         return Promise.reject(refreshError);
       }
     }

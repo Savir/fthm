@@ -1,25 +1,37 @@
-import logo from './logo.svg';
-import './App.css';
+import React, { useState, useEffect } from "react";
+import LoginComponent from "./components/LoginComponent";
+import SyncTasksPage from "./SyncTasksPage";
+import {getLoggedUser, login, logout} from "./tools/authService";
 
-function App() {
+const App = () => {
+  const [userData, setUserData] = useState(null);
+
+  useEffect(() => {
+    const checkAuth = () => {
+      const userData = getLoggedUser();
+      setUserData(userData);
+    };
+
+    checkAuth();
+    window.addEventListener("authChange", checkAuth);
+
+    return () => {
+      window.removeEventListener("authChange", checkAuth);
+    };
+  }, []);
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div>
+      {userData ? (
+        <>
+          <button onClick={logout} style={{ marginBottom: "10px" }}>Logout</button>
+          <SyncTasksPage userData={userData} />
+        </>
+      ) : (
+        <LoginComponent />
+      )}
     </div>
   );
-}
+};
 
 export default App;
