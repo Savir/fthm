@@ -14,3 +14,4 @@ class SyncTask(Base):
     status = Column(String(128), default="in_progress")  # in_progress, failed, completed
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+

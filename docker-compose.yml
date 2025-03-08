@@ -12,7 +12,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      kafka:
+      worker:
         condition: service_started
     environment:
       - DATABASE_URL=mysql+pymysql://user:password@db:3306/fthm
@@ -20,7 +20,7 @@ services:
       - SECRET_KEY=mysecretkey
       - KAFKA_BROKER=kafka:9092
     command: >
-      sh -c "watchmedo auto-restart --directory=/backend/ --patterns='*.py' --recursive -- uvicorn --app-dir /backend/ app.main:app --host 0.0.0.0 --port 8000 --reload"
+      watchmedo auto-restart --directory=/backend/ --patterns='*.py' --recursive -- uvicorn --app-dir /backend/ app.main:app --host 0.0.0.0 --port 8000 --log-level warning --reload
     volumes:
       - ./backend:/backend
 
@@ -42,18 +42,19 @@ services:
       context: .
       dockerfile: worker.Dockerfile  # Create a separate Dockerfile for the worker
     depends_on:
-      - backend
-      - kafka
+      kafka:
+        condition: service_healthy
     environment:
       - DATABASE_URL=mysql+pymysql://user:password@db:3306/fthm
       - REDIS_URL=redis://redis:6379
       - SECRET_KEY=mysecretkey
       - KAFKA_BROKER=kafka:9092
-    command: >
-      sh -c "watchmedo auto-restart --directory=/worker/ --patterns='*.py' --recursive -- python /worker/job_runner.py"
+    command:
+      watchmedo auto-restart --directory=/worker/ --patterns='*.py' --recursive -- python /worker/job_runner.py
     volumes:
       - ./worker:/worker  # Store worker-specific scripts
       - ./backend/app:/worker/app
+      - ./backend/tools:/worker/tools
 
   db:
     image: mysql:8.4
@@ -97,6 +98,10 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     ports:
       - "9092:9092"
+    healthcheck:
+        test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9092"]
+        timeout: 20s
+        retries: 10
     volumes:
       - fthm_kafka_data:/var/lib/kafka
 

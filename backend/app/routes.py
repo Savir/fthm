@@ -1,32 +1,24 @@
-import asyncio
 import json
 from typing import List, Type
 
 import redis
+import structlog
 from fastapi import APIRouter
 from fastapi import Depends, HTTPException
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 from sqlalchemy.orm import Session
 
-from app import constants
 from app.auth import get_current_user
-from app.database import SessionLocal
+from app.database import SessionLocal, get_db
 from app.kafka import produce_message
 from app.models import SyncTask
-
-# Redis Configuration
-REDIS_URL = "redis://redis:6379"
-redis_client = redis.StrictRedis.from_url(REDIS_URL, decode_responses=True)
+from tools import constants
+from tools.sync_task_listener import active_websockets
 
 router = APIRouter()  # No prefix. Better be inplicit.
+redis_client = redis.StrictRedis.from_url(constants.redis_url, decode_responses=True)
 
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+log = structlog.get_logger()
 
 
 @router.get("/sync")
@@ -59,9 +51,13 @@ async def start_sync_task(
     db.add(sync_task)
     db.commit()
 
-    task_data = {"task_id": sync_task.id, "meeting_id": meeting_id, "user_id": user["username"]}
+    task_data = {
+        "task_id": sync_task.id,
+        "meeting_id": meeting_id,
+        "status": sync_task.status,
+        "user_id": user["username"],
+    }
     await produce_message(constants.start_topic, json.dumps(task_data))
-
     return task_data
 
 
@@ -70,43 +66,30 @@ def get_sync_status(
     sync_task_id: int, db: Session = Depends(get_db), user: dict = Depends(get_current_user)
 ):
     """Get the status of a sync task."""
-    sync_task = (
-        db.query(SyncTask)
-        .filter(SyncTask.id == sync_task_id, SyncTask.user_id == user["username"])
-        .one()
-    )
-    if not sync_task:
-        raise HTTPException(status_code=404, detail="No sync task found")
-    task_data = {"task_id": sync_task.id, "meeting_id": sync_task.meeting_id, "user_id": user["username"]}
+    redis_key = str(sync_task_id)
+    if not redis_client.exists(redis_key):
+        log.info("Cache miss checking task status", task_id=sync_task_id)
+        sync_task = (
+            db.query(SyncTask)
+            .filter(SyncTask.id == sync_task_id, SyncTask.user_id == user["username"])
+            .first()
+        )
+        status = sync_task.status if sync_task else constants.not_found
+        redis_client.set(redis_key, status)
+
+    status = redis_client.get(redis_key)
+    if status == constants.not_found:
+        raise HTTPException(status_code=404, detail=f"No sync task found with id {sync_task_id}")
+    task_data = {
+        "task_id": sync_task_id,
+        "status": status,
+        "user_id": user["username"],
+    }
     return task_data
-
-
-active_connections = {}
 
 
 @router.websocket("/ws/sync/{sync_task_id}/status")
 async def sync_status_ws(websocket: WebSocket, sync_task_id: int):
     """WebSocket route to send live sync status updates from Redis Pub/Sub."""
     await websocket.accept()
-    active_connections[sync_task_id] = websocket
-
-    pubsub = redis_client.pubsub()
-    pubsub.subscribe("task_updates")  # Subscribe to the Redis Pub/Sub channel
-
-    try:
-        while True:
-            message = pubsub.get_message(ignore_subscribe_messages=True)
-            if message:
-                data = json.loads(message["data"])
-                task_id = int(data["task_id"])
-                status = data["status"]
-
-                # Send update ONLY if it matches the requested task ID
-                if task_id == sync_task_id:
-                    await websocket.send_json({"sync_task_id": task_id, "status": status})
-
-            await asyncio.sleep(0.1)  # Prevent high CPU usage
-    except WebSocketDisconnect:
-        print(f"WebSocket disconnected for sync task {sync_task_id}")
-    finally:
-        del active_connections[sync_task_id]
+    active_websockets[sync_task_id] = websocket

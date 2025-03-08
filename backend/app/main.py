@@ -1,9 +1,15 @@
+import asyncio
+
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import router as auth_routes
 from app.database import engine, Base
 from app.routes import router as api_router
+from tools.sync_task_listener import handle_notification
+
+log = structlog.get_logger()
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI()
@@ -21,3 +27,10 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"message": "Backend is running"}
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Runs when the FastAPI server starts."""
+    log.info("Starting the FastAPI server")
+    asyncio.create_task(handle_notification())

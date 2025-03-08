@@ -9,6 +9,7 @@ async def produce_message(topic, message):
     await producer.start()
     try:
         await producer.send_and_wait(topic, message.encode("utf-8"))
+        await producer.flush()
     finally:
         await producer.stop()
 
