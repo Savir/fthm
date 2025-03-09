@@ -24,6 +24,7 @@ const App = () => {
     <div>
       {userData ? (
         <>
+          <p>Hello {userData.sub}</p>
           <button onClick={logout} style={{ marginBottom: "10px" }}>Logout</button>
           <SyncTasksPage userData={userData} />
         </>
