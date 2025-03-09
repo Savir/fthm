@@ -1,6 +1,8 @@
 import React from "react";
 
 const SyncTasksList = ({ syncTasks }) => {
+    const sortedTasks = [...syncTasks].sort((a, b) => b.id - a.id);
+
     return (
         <div>
             <h2>Sync Tasks</h2>
@@ -8,7 +10,7 @@ const SyncTasksList = ({ syncTasks }) => {
                 <p>No sync jobs found.</p>
             ) : (
                 <ul>
-                    {syncTasks.map((st) => (
+                    {sortedTasks.map((st) => (
                         <li key={st.id}>
                             Sync Job ID {st.id}: Meeting ID {st.meetingId} - Status: {st.status}
                         </li>

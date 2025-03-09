@@ -4,10 +4,10 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.auth import router as auth_routes
-from tools.database import engine, Base
 from app.routes import sync_task_router
-from tools.sync_task_listener import status_updates_listener
+from app.routes.auth import router as auth_routes
+from app.routes.sync_task_websocket import status_updates_listener
+from tools.database import engine, Base
 
 log = structlog.get_logger()
 

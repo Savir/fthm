@@ -7,7 +7,7 @@ import SyncTasksList from "./components/SyncTasksList";
 
 const SyncTasksPage = ({userData}) => {
     const [syncTasks, setSyncTasks] = useState([]);
-    const [meetingId, setMeetingId] = useState("");
+    const [meetingId, setMeetingId] = useState(null);
     const [isDisabled, setIsDisabled] = useState(false);
 
     useEffect(() => {
@@ -23,14 +23,26 @@ const SyncTasksPage = ({userData}) => {
         fetchSyncTasks();
     }, []);
 
+    useEffect(() => {
+        setIsDisabled(isTaskInProgress() || !meetingId);
+    }, [meetingId, syncTasks]);
+
+    const safeSetMeetingId = (value) => {
+        const parsedValue = value !== null ? parseInt(value, 10) : null;
+        setMeetingId(isNaN(parsedValue) ? null : parsedValue);
+    };
+
+    const isTaskInProgress = () => {
+        return syncTasks.some(
+            (task) => task.meetingId === meetingId && !completedStatuses.includes(task.status)
+        );
+    };
+
     const syncToCRM = async () => {
         if (!meetingId) return alert("Enter a Meeting ID");
 
-        const isTaskInProgress = syncTasks.some(
-            (task) => task.meetingId === meetingId && !completedStatuses.includes(task.status)
-        );
-
-        if (isTaskInProgress) {
+        if (isTaskInProgress()) {
+            // This should never happen because the buttong should've been disabled but... meh
             alert("A sync task for this meeting ID is already in progress.");
             return;
         }
@@ -51,19 +63,12 @@ const SyncTasksPage = ({userData}) => {
         );
     };
 
-    useEffect(() => {
-        const isTaskInProgress = syncTasks.some(
-            (task) => task.meetingId === meetingId && !completedStatuses.includes(task.status)
-        );
-        setIsDisabled(isTaskInProgress);
-    }, [meetingId, syncTasks]);
-
     return (
         <div>
             {userData?.permissions?.can_manually_sync ? (
                 <ManualSync
                     meetingId={meetingId}
-                    setMeetingId={setMeetingId}
+                    setMeetingId={safeSetMeetingId}
                     syncToCRM={syncToCRM}
                     isDisabled={isDisabled}
                 />

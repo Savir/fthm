@@ -1,7 +1,7 @@
 import React, {useState} from "react";
 import {login} from "../tools/authService";
 
-const LoginComponent = ({onLogin}) => {
+const LoginComponent = () => {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState(null);

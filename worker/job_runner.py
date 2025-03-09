@@ -1,9 +1,7 @@
 import asyncio
 import json
-import os
 import random
 
-import redis
 import structlog
 
 from app.models import SyncTask
@@ -13,16 +11,14 @@ from tools.database import ctx_db
 from tools.kafka import produce_message, consume_messages
 
 log = structlog.get_logger()
-# Redis Configuration
-REDIS_URL = os.getenv("REDIS_URL", default="redis://redis:6379")
-redis_client = redis.StrictRedis.from_url(REDIS_URL, decode_responses=True)
-
-# Kafka Configuration
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", default="kafka:9092")
 
 
 async def update_task_status(task_id: int, status: str):
-    """Publishes task status update to Redis Pub/Sub."""
+    """Does all the things when a task status is updated:
+    - Set/update the Redis cache entry
+    - Update the Database row
+    - Publish the status via kafka for whomever wants to listen
+    """
     try:
         task_id = int(task_id)
     except (ValueError, TypeError):
@@ -31,17 +27,18 @@ async def update_task_status(task_id: int, status: str):
     if not status:
         raise ValueError(f"status can't be empty (when updating task_id={task_id}")
 
-    # Update redis cache ASAP
+    # Update redis cache ASAP. This can potentially lower DB accesses
+    redis_client = util_redis.get_client()
     cache_key = util_redis.task_status_key(task_id)
-    redis_client.set(cache_key, status, ex=3_600)
+    redis_client.set(cache_key, status, ex=60 * 60 * 5)
 
     # Update the value in the database:
     with ctx_db() as db:
         db.query(SyncTask).filter(SyncTask.id == task_id).update({SyncTask.status: status})
         db.commit()
 
-    # Now, push a Kafka message in the 'status_updates' topic for anyone who
-    # wants to listen for changes (namely, the backend and its websockets)
+    # Now, push a Kafka message in the 'status_updates' topic to let the world know that
+    # the status has changed
     message = json.dumps({"task_id": task_id, "status": status})
     log.info(
         "Pushing task status change",
@@ -52,43 +49,57 @@ async def update_task_status(task_id: int, status: str):
     await produce_message(constants.status_updates_topic, message)
 
 
-async def _simulate_work(kafka_msg, *, job_name: str):
-    task_data = json.loads(kafka_msg)
+async def _simulate_work(task_data, *, job_name: str):
     log.info(f"Got message from Kafka topic '{job_name}'", task_data=task_data)
     task_id = task_data["task_id"]
     await update_task_status(task_id, job_name)
-    try:
-        # Pretend to take some time:
-        await asyncio.sleep(2)
-        if random.randint(0, 10) == 0:
-            raise Exception(f"boooooOOOOOOm in {job_name}!!!")
-    except Exception:
-        log.exception(f"Exception occurred in job {job_name}", task_id=task_id)
-        await update_task_status(task_id, constants.failed_status)
-        raise
+    # Pretend to take some time:
+    await asyncio.sleep(2)
+    if random.randint(0, 10) == 0:
+        raise Exception(f"boooooOOOOOOm in {job_name}!!!")
 
 
 async def process_jobA():
     """Kafka consumer for JobA."""
     async for message in consume_messages(constants.start_topic):
-        await _simulate_work(message, job_name="jobA")
-        await produce_message("jobB", message)
+        task_data = json.loads(message)
+        task_id = task_data["task_id"]
+        try:
+            await _simulate_work(task_data, job_name="jobA")
+        except Exception:
+            log.exception("Exception while processing jobA", task_id=task_id)
+            await update_task_status(task_id, constants.failed_status)
+        else:
+            await produce_message("jobB", message)
 
 
 async def process_jobB():
     """Kafka consumer for JobB."""
     async for message in consume_messages("jobB"):
-        await _simulate_work(message, job_name="jobB")
-        await produce_message("jobC", message)
+        task_data = json.loads(message)
+        task_id = task_data["task_id"]
+        try:
+            await _simulate_work(task_data, job_name="jobB")
+        except Exception:
+            log.exception("Exception while processing jobB", task_id=task_id)
+            await update_task_status(task_id, constants.failed_status)
+        else:
+            await produce_message("jobC", message)
 
 
 async def process_jobC():
     """Kafka consumer for JobC."""
     async for message in consume_messages("jobC"):
-        await _simulate_work(message, job_name="jobC")
-        # Mark completed
         task_data = json.loads(message)
-        await update_task_status(task_data["task_id"], constants.completed_status)
+        task_id = task_data["task_id"]
+        try:
+            await _simulate_work(task_data, job_name="jobC")
+        except Exception:
+            log.exception("Exception while processing jobC", task_id=task_id)
+            await update_task_status(task_id, constants.failed_status)
+        else:
+            # Mark completed
+            await update_task_status(task_id, constants.completed_status)
 
 
 async def main():

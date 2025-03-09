@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, {useEffect, useState} from "react";
 import LoginComponent from "./components/LoginComponent";
 import SyncTasksPage from "./SyncTasksPage";
-import {getLoggedUser, login, logout} from "./tools/authService";
+import {getLoggedUser, logout} from "./tools/authService";
 
 const App = () => {
   const [userData, setUserData] = useState(null);
