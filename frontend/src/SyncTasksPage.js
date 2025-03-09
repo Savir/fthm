@@ -14,7 +14,7 @@ const SyncTasksPage = ({userData}) => {
         const fetchSyncTasks = async () => {
             try {
                 const response = await api.get("/sync");
-                setSyncTasks(response.data.map(st => new SyncTask(st.id, st.meeting_id, st.status, updateSyncJobs)));
+                setSyncTasks(response.data.map(st => new SyncTask(st.task_id, st.meeting_id, st.status, updateSyncJobs)));
             } catch (error) {
                 console.error("Error fetching sync jobs:", error);
             }
@@ -59,7 +59,7 @@ const SyncTasksPage = ({userData}) => {
 
     const updateSyncJobs = (updatedTask) => {
         setSyncTasks(prev =>
-            prev.map(task => (task.id === updatedTask.id ? updatedTask : task))
+            prev.map(task => (task.task_id === updatedTask.task_id ? updatedTask : task))
         );
     };
 

@@ -4,40 +4,40 @@ import {completedStatuses} from "./constants";
 const WS_URL = "ws://localhost:8000";
 
 class SyncTask {
-    constructor(id, meeting_id, status = "in_progress", onUpdate) {
-        this.id = parseInt(id, 10);
+    constructor(task_id, meeting_id, status = "in_progress", onUpdate) {
+        this.task_id = parseInt(task_id, 10);
         this.meetingId = parseInt(meeting_id, 10);
         this.status = status;
         this.onUpdate = onUpdate; // Callback function when status updates
         this.ws = null; // WebSocket instance
         this.pollingInterval = null; // Polling interval ID
 
-        if (this.id && !completedStatuses.includes(this.status)) {
+        if (this.task_id && !completedStatuses.includes(this.status)) {
             this.startTracking();
         }
     }
 
     startTracking() {
-        console.log(`Tracking syncTask ID ${this.id} for meeting ${this.meetingId}`);
+        console.log(`Tracking syncTask ID ${this.task_id} for meeting ${this.meetingId}`);
         this.connectWebSocket();
     }
 
     connectWebSocket() {
         if (this.ws) {
-            console.log(`WebSocket already exists for task ${this.id}`);
+            console.log(`WebSocket already exists for task ${this.task_id}`);
             return;
         }
         try {
-            this.ws = new WebSocket(`${WS_URL}/ws/sync/${this.id}/status`);
+            this.ws = new WebSocket(`${WS_URL}/ws/sync/${this.task_id}/status`);
 
-            this.ws.onopen = () => console.log(`WebSocket connected for task ${this.id} at URL ${this.ws.url}`);
+            this.ws.onopen = () => console.log(`WebSocket connected for task ${this.task_id} at URL ${this.ws.url}`);
 
             this.ws.onmessage = (event) => {
                 const {task_id, status} = JSON.parse(event.data);
-                console.log(`Received status update to ${status} for task ${task_id}/${this.id}`);
+                console.log(`Received status update to ${status} for task ${task_id}/${this.task_id}`);
 
-                if (task_id !== this.id) {
-                    console.error(`WebSocket received update for wrong task! Expected ${this.id}, got ${task_id}`);
+                if (task_id !== this.task_id) {
+                    console.error(`WebSocket received update for wrong task! Expected ${this.task_id}, got ${task_id}`);
                     return;
                 }
 
@@ -45,13 +45,13 @@ class SyncTask {
                 this.onUpdate(this);
 
                 if (completedStatuses.includes(status)) {
-                    console.log(`Task ${this.id} has reached completion (${status}), stopping tracking.`);
+                    console.log(`Task ${this.task_id} has reached completion (${status}), stopping tracking.`);
                     this.stopTracking();
                 }
             };
 
             this.ws.onerror = (error) => {
-                console.error(`WebSocket error for task ${this.id}:`, error);
+                console.error(`WebSocket error for task ${this.task_id}:`, error);
                 this.ws.close();
                 this.ws = null;
                 // Fallback to polling without checking the status This was unexpected... so even if the status
@@ -60,13 +60,13 @@ class SyncTask {
             };
 
             this.ws.onclose = () => {
-                console.log(`WebSocket closed for task ${this.id}`);
+                console.log(`WebSocket closed for task ${this.task_id}`);
                 this.ws = null;
                 if (!completedStatuses.includes(this.status)) {
-                    console.log(`WebSocket closed unexpectedly for task ${this.id}, switching to polling.`);
+                    console.log(`WebSocket closed unexpectedly for task ${this.task_id}, switching to polling.`);
                     this.startPolling();
                 } else {
-                    console.log(`WebSocket closed because task ${this.id} is completed, no polling needed.`);
+                    console.log(`WebSocket closed because task ${this.task_id} is completed, no polling needed.`);
                 }
             };
         } catch (error) {
@@ -77,10 +77,10 @@ class SyncTask {
 
     async fetchStatus() {
         try {
-            const response = await api.get(`/sync/${this.id}/status`);
+            const response = await api.get(`/sync/${this.task_id}/status`);
             return response.data;
         } catch (error) {
-            console.error(`Error fetching sync status for task ${this.id}:`, error);
+            console.error(`Error fetching sync status for task ${this.task_id}:`, error);
             return {status: "error"};
         }
     }
@@ -88,7 +88,7 @@ class SyncTask {
     startPolling() {
         if (this.pollingInterval) return;
 
-        console.log(`Starting polling for task ${this.id}`);
+        console.log(`Starting polling for task ${this.task_id}`);
         this.pollingInterval = setInterval(async () => {
             const data = await this.fetchStatus();
             if (data.status !== this.status) {
@@ -97,7 +97,7 @@ class SyncTask {
             }
 
             if (completedStatuses.includes(data.status)) {
-                console.log(`Task ${this.id} is completed (${data.status}), stopping polling.`);
+                console.log(`Task ${this.task_id} is completed (${data.status}), stopping polling.`);
                 this.stopTracking();
             }
         }, 1000);
@@ -106,14 +106,14 @@ class SyncTask {
     stopTracking() {
         // Stop WebSocket if it exists
         if (this.ws) {
-            console.log(`Closing WebSocket for task ${this.id}`);
+            console.log(`Closing WebSocket for task ${this.task_id}`);
             this.ws.close();
             this.ws = null;
         }
 
         // Stop polling if it exists
         if (this.pollingInterval) {
-            console.log(`Stopping polling for task ${this.id}`);
+            console.log(`Stopping polling for task ${this.task_id}`);
             clearInterval(this.pollingInterval);
             this.pollingInterval = null;
         }
