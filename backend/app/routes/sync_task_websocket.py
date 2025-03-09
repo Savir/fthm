@@ -1,6 +1,4 @@
-import asyncio
 import json
-import logging
 
 import structlog
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
@@ -22,7 +20,9 @@ async def _push_task_status(task_id: int, status: str):
     websocket = active_websockets.get(task_id)
     if websocket and websocket.client_state == WebSocketState.CONNECTED:
         try:
-            log.info(f"Pushing status update for task via websocket", task_id=task_id, status=status)
+            log.info(
+                f"Pushing status update for task via websocket", task_id=task_id, status=status
+            )
             await websocket.send_json({"task_id": task_id, "status": status})
         except WebSocketDisconnect:
             log.warning(f"WebSocket disconnected for sync task", task_id=task_id)
@@ -44,7 +44,5 @@ async def status_updates_listener():
             data = json.loads(message)
             task_id = int(data["task_id"])  # Just in case... ensure it's an int
             await _push_task_status(task_id, data["status"])
-        except (asyncio.TimeoutError, json.decoder.JSONDecodeError) as e:
-            logging.exception(e)
         except Exception:
             log.exception("Exception handling notifications", sync_task_id=task_id)

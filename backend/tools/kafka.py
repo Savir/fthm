@@ -6,11 +6,14 @@ from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
 log = structlog.get_logger()
 
 _kafka_broker = None
+
+
 def get_kafka_broker():
     global _kafka_broker
     if not _kafka_broker:
         _kafka_broker = os.getenv("KAFKA_BROKER", default="kafka:9092")
     return _kafka_broker
+
 
 async def produce_message(topic: str, message: str):
     producer = AIOKafkaProducer(bootstrap_servers=get_kafka_broker())

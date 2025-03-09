@@ -28,7 +28,7 @@ def get_user_syncs(user: dict = Depends(get_current_user), db: Session = Depends
     """
     Return the most recent sync tasks created by the logged in user ('user' param)
     deduplicated by meeting_id/status. Meaning: if we have two sync tasks for a given
-    meeting and with the same status, it will return only the most recent one.
+    meeting both with the same status, it will return only the most recent one.
     """
     subq = (
         db.query(
@@ -57,7 +57,19 @@ def get_user_syncs(user: dict = Depends(get_current_user), db: Session = Depends
 async def start_sync_task(
     meeting_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    """Start a new sync task for the meeting with ID 'meeting_id'"""
+    """
+    Start a new sync task for the meeting with ID 'meeting_id' as long as we don't have
+    one in progress already.
+    Remember: We just care about the finished statuses: ["completed", "failed"]. Any other
+    status will be considered "in progress". This allows for a bit more flexibility and
+    fine grain control. For instance: the frontend might want to show the actual status
+    (jobA, jobB...) or just "syncing..."
+
+    Also note that we allow multiple Synchronization Jobs for the same meeting, as long
+    as there isn't one currently "in progress" (not finished). We could easily change this
+    to allow re-scheduling only for failed synchronization jobs, but for testing purposes,
+    let's allow multiple re-syncs as long as the previous ones are all definitively finished.
+    """
     if not user["permissions"]["can_manually_sync"]:
         # 403: I know who you are, but you just can't do this... Dave https://youtu.be/5lsExRvJTAI
         # This should never happen, because we embed permissions in the token and the
@@ -96,8 +108,7 @@ async def start_sync_task(
 
     task_data = {
         "task_id": sync_task.id,
-        "meeting_id": sync_task.meeting_id,
-        "user_id": sync_task.user_id,
+        "meeting_id": sync_task.meeting_id,  # Nice to show the meetingID on the list of tasks
         "status": sync_task.status,
     }
     log.info("Meeting synchronization task started", **task_data)
@@ -122,7 +133,7 @@ def get_sync_status(
     if not redis_client.exists(cache_key):
         log.info("Cache miss checking task status. Fetching from DB.", task_id=task_id)
         sync_task = (
-            db.query(SyncTask)
+            db.query(SyncTask.status)
             .filter(SyncTask.id == task_id, SyncTask.user_id == user["username"])
             .first()
         )

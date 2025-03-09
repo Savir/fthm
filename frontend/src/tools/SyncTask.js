@@ -4,7 +4,7 @@ import {completedStatuses} from "./constants";
 const WS_URL = "ws://localhost:8000";
 
 class SyncTask {
-    constructor(task_id, meeting_id, status = "in_progress", onUpdate) {
+    constructor(task_id, meeting_id, status = "scheduled", onUpdate) {
         this.task_id = parseInt(task_id, 10);
         this.meetingId = parseInt(meeting_id, 10);
         this.status = status;
