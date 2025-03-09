@@ -14,5 +14,5 @@ class SyncTask(Base):
     meeting_id = Column(mysql.BIGINT(unsigned=True), index=True)
     status = Column(String(128), default="in_progress")  # in_progress, failed, completed
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, index=True, default=datetime.utcnow, onupdate=datetime.utcnow)
 

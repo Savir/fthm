@@ -2,6 +2,7 @@ import asyncio
 import json
 from typing import Type, Iterable
 
+import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter
 from fastapi import Depends, HTTPException
@@ -24,10 +25,31 @@ log = structlog.get_logger()
 
 @router.get("/sync")
 def get_user_syncs(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Return all meetings and their sync status for the logged-in user."""
-    sync_tasks: Iterable[Type[SyncTask]]
-    sync_tasks = db.query(SyncTask).filter(SyncTask.user_id == user["username"])
-    return [{"id": st.id, "meeting_id": st.meeting_id, "status": st.status} for st in sync_tasks]
+    """
+    Return the most recent sync tasks created by the logged in user ('user' param)
+    deduplicated by meeting_id/status. Meaning: if we have two sync tasks for a given
+    meeting and with the same status, it will return only the most recent one.
+    """
+    subq = (
+        db.query(
+            SyncTask.id,
+            sa.func.row_number()
+            .over(
+                partition_by=[SyncTask.meeting_id, SyncTask.status],
+                order_by=SyncTask.updated_at.desc(),
+            )
+            .label("row_num"),
+        )
+        .filter(SyncTask.user_id == user["username"])
+        .subquery()
+    )
+    latest_entries: Iterable[Type[SyncTask]]
+    latest_entries = (
+        db.query(SyncTask).join(subq, SyncTask.id == subq.c.id).filter(subq.c.row_num == 1)
+    )
+    return [
+        {"id": st.id, "meeting_id": st.meeting_id, "status": st.status} for st in latest_entries
+    ]
 
 
 @router.post("/sync/{meeting_id}/start")
