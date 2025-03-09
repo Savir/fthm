@@ -37,13 +37,18 @@ async def start_sync_task(
     """Start a new sync task for the meeting with ID 'meeting_id'"""
     if not user["permissions"]["can_manually_sync"]:
         # 403: I know who you are, but you just can't do this... Dave https://youtu.be/5lsExRvJTAI
+        # This should never happen, because we embed permissions in the token and the
+        # frontend should hide the sync button. BuuUUUUuuuut... We never, NEVER, ever trust
+        # the frontend. EVER
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail=f"User {user['username']} can't manually sync",
         )
 
     # If we already have a synchronization task for that meeting that is not "finished",
-    # then throw an error.
+    # then throw an error. The frontend should prevent this from happening, by disabling
+    # the <form> to create a new synchronization buuuUUuut... what did we just say about
+    # the frontend? That we never ever trust it? Yeah...
     existing_task = db.query(
         db.query(SyncTask)
         .filter(
@@ -87,7 +92,8 @@ def get_sync_status(
     """
 
     # First, query the best thing ever invented by mankind since chocolate milk (Redis)
-    # which we're using as a cache.
+    # which we're using as a cache. If we have queried the status before, we won't need
+    # to go to the database.
     redis_client = util_redis.get_client()
     cache_key = util_redis.task_status_key(task_id)
     if not redis_client.exists(cache_key):
@@ -123,7 +129,7 @@ async def sync_status_ws(websocket: WebSocket, task_id: int):
     This websocket will be used to push live sync status updates for the synchronization
     task with ID task_id to the frontend.
     Notice each task will have its own WebSocket. This could (potentially) lead to
-    port starvation.
+    port starvation. If that happens, we should
     """
     log.info("Opening websocket to track task", task_id=task_id)
     await websocket.accept()
