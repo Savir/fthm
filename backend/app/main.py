@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.auth import router as auth_routes
 from tools.database import engine, Base
 from app.routes import sync_task_router
-from tools.sync_task_listener import listen_for_changes
+from tools.sync_task_listener import status_updates_listener
 
 log = structlog.get_logger()
 
@@ -33,4 +33,4 @@ def read_root():
 async def startup_event():
     """Runs when the FastAPI server starts."""
     log.info("Starting the FastAPI server")
-    asyncio.create_task(listen_for_changes())
+    asyncio.create_task(status_updates_listener())

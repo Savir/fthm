@@ -8,7 +8,8 @@ from sqlalchemy.orm import sessionmaker
 
 if typing.TYPE_CHECKING:
     from sqlalchemy.orm import Session
-DATABASE_URL = os.getenv("DATABASE_URL", "mysql+pymysql://user:password@db:3306/fthm")
+    
+DATABASE_URL = os.getenv("DATABASE_URL", default="mysql+pymysql://user:password@db:3306/fthm")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

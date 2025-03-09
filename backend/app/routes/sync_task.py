@@ -12,12 +12,12 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.auth import get_current_user
 from app.models import SyncTask
-from tools import constants
+from tools import constants, util_redis
 from tools.database import get_db
 from tools.kafka import produce_message
 from tools.sync_task_listener import active_websockets
 
-router = APIRouter()  # No prefix. Better be implicit.
+router = APIRouter()  # No prefix. Better be implicit on each route.
 redis_client = redis.StrictRedis.from_url(constants.redis_url, decode_responses=True)
 
 log = structlog.get_logger()
@@ -33,7 +33,7 @@ def get_user_syncs(user: dict = Depends(get_current_user), db: Session = Depends
 
 @router.post("/sync/{meeting_id}/start")
 async def start_sync_task(
-    meeting_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)
+    meeting_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """Start a new sync task for the meeting with ID 'meeting_id'"""
     if not user["permissions"]["can_manually_sync"]:
@@ -43,7 +43,7 @@ async def start_sync_task(
     # If we already have a synchronization task for that meeting that is not "finished",
     # then throw an error.
     existing_task = db.query(
-        db.query(SyncTask.id)
+        db.query(SyncTask)
         .filter(
             SyncTask.meeting_id == meeting_id,
             SyncTask.user_id == user["username"],
@@ -53,19 +53,21 @@ async def start_sync_task(
     ).scalar()
 
     if existing_task:
-        raise HTTPException(status_code=400, detail="Sync already in progress")
+        raise HTTPException(
+            status_code=400, detail=f"Sync for meeting {meeting_id} already in progress"
+        )
 
-    # Ok: If we're here, we can create a new synchronization task and send it to the worker
-    #     for processing.
+    # Ok: If we're here, we can create a new synchronization task and send it to the Kafka
+    #     worker for processing.
     sync_task = SyncTask(meeting_id=meeting_id, user_id=user["username"])
     db.add(sync_task)
     db.commit()
 
     task_data = {
         "task_id": sync_task.id,
-        "meeting_id": meeting_id,
+        "meeting_id": sync_task.meeting_id,
+        "user_id": sync_task.user_id,
         "status": sync_task.status,
-        "user_id": user["username"],
     }
     log.info("Meeting synchronization task started", **task_data)
     await produce_message(constants.start_topic, json.dumps(task_data))
@@ -77,18 +79,18 @@ def get_sync_status(
     sync_task_id: int, db: Session = Depends(get_db), user: dict = Depends(get_current_user)
 ):
     """Get the status of a sync task."""
-    redis_key = str(sync_task_id)
-    if not redis_client.exists(redis_key):
-        log.info("Cache miss checking task status", task_id=sync_task_id)
+    cache_key = util_redis.task_status_key(sync_task_id)
+    if not redis_client.exists(cache_key):
+        log.info("Cache miss checking task status. Fetching from DB.", task_id=sync_task_id)
         sync_task = (
             db.query(SyncTask)
             .filter(SyncTask.id == sync_task_id, SyncTask.user_id == user["username"])
             .first()
         )
         status = sync_task.status if sync_task else constants.not_found
-        redis_client.set(redis_key, status)
+        redis_client.set(cache_key, status)
 
-    status = redis_client.get(redis_key)
+    status = redis_client.get(cache_key)
     if status == constants.not_found:
         raise HTTPException(status_code=404, detail=f"No sync task found with id {sync_task_id}")
     task_data = {
@@ -101,7 +103,7 @@ def get_sync_status(
 
 @router.websocket("/ws/sync/{sync_task_id}/status")
 async def sync_status_ws(websocket: WebSocket, sync_task_id: int):
-    """WebSocket route to send live sync status updates from Redis Pub/Sub."""
+    """WebSocket route to send live sync status updates."""
     await websocket.accept()
     active_websockets[sync_task_id] = websocket
     try:

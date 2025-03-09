@@ -1,24 +1,31 @@
+import copy
 import os
 from datetime import datetime, timedelta
-import copy
+
 import jwt
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
+from tools import pw_encryptor
+
 router = APIRouter()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "mysecretkey")
+SECRET_KEY = os.getenv("SECRET_KEY", default="mysecretkey")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Temporary user store
 users_db = {
     "hector": {
         "username": "hector",
-        "password": "hector",
+        "password": pw_encryptor.hash_password("hector"),
         "permissions": {"can_manually_sync": True},
     },
-    "foo": {"username": "foo", "password": "foo", "permissions": {"can_manually_sync": False}},
+    "foo": {
+        "username": "foo",
+        "password": pw_encryptor.hash_password("foo"),
+        "permissions": {"can_manually_sync": False},
+    },
 }
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
@@ -40,7 +47,7 @@ def _create_access_token(user: dict, expires_delta: timedelta = None):
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """Login user and return access token."""
     user = users_db.get(form_data.username)
-    if not user or user["password"] != form_data.password:
+    if not user or not pw_encryptor.verify_password(form_data.password, user.get('password')):
         raise HTTPException(status_code=400, detail="Invalid username or password")
 
     access_token = _create_access_token(user)

@@ -22,14 +22,14 @@ async def produce_message(topic: str, message: str):
         await producer.stop()
 
 
-async def consume_messages(topic):
+async def consume_messages(topic, only_once=True):
     """Async generator that yields Kafka messages."""
-    group_id="sync_group"
+    group_id = "sync_group"
     consumer = AIOKafkaConsumer(
         topic,
         bootstrap_servers=KAFKA_BROKER,
         group_id=group_id,
-        enable_auto_commit=True,
+        enable_auto_commit=False if only_once else True,
     )
     await consumer.start()
     log.info("Starting consumer", topic=topic, group_id=group_id)
@@ -38,6 +38,8 @@ async def consume_messages(topic):
         async for message in consumer:
             value = message.value.decode("utf-8")
             log.info("Consumed message from Kafka", topic=topic, value=value)
+            if only_once:
+                await consumer.commit()
             yield value
     except Exception:
         log.exception("Error consuming message from Kafka", topic=topic, value=value)
