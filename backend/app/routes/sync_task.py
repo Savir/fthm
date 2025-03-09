@@ -48,7 +48,8 @@ def get_user_syncs(user: dict = Depends(get_current_user), db: Session = Depends
         db.query(SyncTask).join(subq, SyncTask.id == subq.c.id).filter(subq.c.row_num == 1)
     )
     return [
-        {"id": st.id, "meeting_id": st.meeting_id, "status": st.status} for st in latest_entries
+        {"task_id": st.id, "meeting_id": st.meeting_id, "status": st.status}
+        for st in latest_entries
     ]
 
 
