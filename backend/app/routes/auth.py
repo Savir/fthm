@@ -17,7 +17,7 @@ log = structlog.get_logger()
 SECRET_KEY = os.getenv("SECRET_KEY", default="mysecretkey")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-token_url = "/token"
+token_url = "/login"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=token_url)
 
 # Temporary user """database table""" (cough, cough). Just for testing!!

@@ -8,13 +8,13 @@ const refreshTokenKey = "refreshToken";
 export const login = async (username, password) => {
   try {
     const response = await axios.post(
-      `${API_URL}/token`,
-      new URLSearchParams({ username, password }), // ✅ Correct form data format
+      `${API_URL}/login`,
+      new URLSearchParams({ username, password }),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
 
     storeTokens(response.data.access_token, response.data?.refresh_token || null);
-    window.dispatchEvent(new Event("authChange")); // ✅ Notify App.js that authentication changed
+    window.dispatchEvent(new Event("authChange"));
     return true;
   } catch (error) {
     console.error("Login failed:", error);
